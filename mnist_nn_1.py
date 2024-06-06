@@ -15,24 +15,34 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 
-###########################################
-########## SOURCE/CLEAN OUR DATA ##########
-###########################################
+#################################
+########## SOURCE DATA ##########
+#################################
 
 # download mnist dataset, splitting into testing and training subsets
+print("----------------------------------------")
+print("Downloading MNIST data...")
+
 train = datasets.MNIST("", train=True, download=True,
                         transform=transforms.Compose([transforms.ToTensor()]))
 test = datasets.MNIST("", train=False, download=True,
                         transform=transforms.Compose([transforms.ToTensor()]))
+
+print("Complete!")
+
 # load data into memory
+print("----------------------------------------")
+print("Loading datasets...")
+
 trainset = torch.utils.data.DataLoader(train, batch_size=10, shuffle=True)
 testset = torch.utils.data.DataLoader(test, batch_size=10, shuffle=True)
 
+print("Complete!")
 
 
-###############################################
-########## CONFIGURE NN ARCHITECTURE ##########
-###############################################
+#####################################
+########## CONFIGURE MODEL ##########
+#####################################
 
 class Net(nn.Module):
     def __init__(self):
@@ -53,19 +63,25 @@ class Net(nn.Module):
         x = F.log_softmax(self.fc4(x), dim=1)
         return x
 
+print("----------------------------------------")
+print("Creating neural net...")
+
 # instantiate our NN
 net = Net()
 
 # configure optimiser (fixing a learning rate)
 optimiser = optim.Adam(net.parameters(), lr=1e-3)
 
+print("Complete!")
 
-
-##########################################
-########## TRAIN THE NEURAL NET ##########
-##########################################
+#####################################
+########## TRAIN THE MODEL ##########
+#####################################
 
 num_epochs = 3
+
+print("----------------------------------------")
+print("Training in progress...")
 
 for epoch in range(num_epochs):
     for batch in trainset:
@@ -89,4 +105,30 @@ for epoch in range(num_epochs):
         optimiser.step()
 
     # print loss at the end of each epoch
-    print(loss)
+    print("Epoch", epoch, "complete: loss =", round(loss.item(), 5))
+
+print("Training complete!")
+
+####################################
+########## VALIDATE MODEL ##########
+####################################
+
+print("----------------------------------------")
+print("Validating...")
+
+correct = 0
+total = 0
+
+with torch.no_grad():
+    for batch in testset:
+        X, y = batch
+
+        output = net(X.view(-1, 28*28))
+
+        for idx, i in enumerate(output):
+            if torch.argmax(i) == y[idx]:
+                correct += 1
+            total += 1
+
+print("Validation complete, accuracy:", round(correct/total,3)*100, "%")
+print("----------------------------------------")
