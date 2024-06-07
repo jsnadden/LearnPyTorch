@@ -78,10 +78,29 @@ print("Complete!")
 ########## TRAIN THE MODEL ##########
 #####################################
 
-num_epochs = 3
+# compute accuracy of untrained network on validation set
+print("----------------------------------------")
+correct = 0
+total = 0
+
+with torch.no_grad():
+    for batch in testset:
+        X, y = batch
+
+        output = net(X.view(-1, 28*28))
+
+        for idx, i in enumerate(output):
+            if torch.argmax(i) == y[idx]:
+                correct += 1
+            total += 1
+
+print("Accuracy prior to training:", round(correct/total,3)*100, "%")
+
 
 print("----------------------------------------")
 print("Training in progress...")
+
+num_epochs = 3
 
 for epoch in range(num_epochs):
     for batch in trainset:
@@ -130,5 +149,6 @@ with torch.no_grad():
                 correct += 1
             total += 1
 
-print("Validation complete, accuracy:", round(correct/total,3)*100, "%")
+print("Complete!")
+print("Final accuracy:", round(correct/total,3)*100, "%")
 print("----------------------------------------")
