@@ -7,15 +7,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+# this is so ugly, and in desperate need of cleaning up...
+# Python really doesn't inspire best practices like my beloved C++
 
 # globals
 REBUILD_DATA = False
 ALLOW_GPU = True
 IMG_SIZE = 48
-
-# hyperparameters
 BATCH_SIZE = 100
-EPOCHS = 1
+EPOCHS = 30
 
 print("----------------------------------------")
 
@@ -93,10 +98,6 @@ print("Complete!")
 
 
 
-#####################################
-########## CONFIGURE MODEL ##########
-#####################################
-
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
@@ -141,6 +142,7 @@ y = torch.Tensor([i[1] for i in data])
 # data split: 90% training / 10% testing
 DATA_SIZE = len(X)
 TEST_SIZE = int(DATA_SIZE * 0.1)
+TRAIN_SIZE = DATA_SIZE - TEST_SIZE
 
 train_X = X[:-TEST_SIZE]
 train_y = y[:-TEST_SIZE]
@@ -148,52 +150,83 @@ train_y = y[:-TEST_SIZE]
 test_X = X[-TEST_SIZE:]
 test_y = y[-TEST_SIZE:]
 
+MODEL_NAME = f"model-{int(time.time())}"
+
 print("Complete!")
 
-#################################
-########## TRAIN MODEL ##########
-#################################
 
-print("----------------------------------------")
-print("Training started...")
 
-for epoch in range (EPOCHS):
-    print("Epoch", epoch, ":")
-    for i in tqdm(range(0, DATA_SIZE - TEST_SIZE, BATCH_SIZE)):
-
-        # create a batch, send to GPU
-        batch_X = train_X[i:i+BATCH_SIZE].view(-1,1,IMG_SIZE,IMG_SIZE).to(DEVICE)
-        batch_y = train_y[i:i+BATCH_SIZE].to(DEVICE)
-
-        # backprop
+def feedthrough(X, y, train=False):
+    if train:
         net.zero_grad()
-        output = net(batch_X)
-        loss = loss_function(output, batch_y)
+    
+    outputs = net(X)
+    matches = [torch.argmax(i) == torch.argmax(j) for i, j in zip(outputs, y)]
+    accuracy = matches.count(True) / len(matches)
+    loss = loss_function(outputs, y)
+
+    if train:
         loss.backward()
         optimiser.step()
-    print("Current loss value =", round(loss.item(), 5))
+    
+    return accuracy, loss.item()
 
-print("Training complete!")
+def test(size=32):
+    random_index = np.random.randint(TEST_SIZE - size)
 
-####################################
-########## VALIDATE MODEL ##########
-####################################
+    X = test_X[random_index:random_index+size]
+    y = test_y[random_index:random_index+size]
 
-print("----------------------------------------")
-print("Validating...")
+    with torch.no_grad():
+        val_acc, val_loss = feedthrough(X.view(-1,1,IMG_SIZE,IMG_SIZE).to(DEVICE), y.to(DEVICE), False)
+    
+    return val_acc, val_loss
 
-correct = 0
+def train():
+    print("----------------------------------------")
+    print("Training started...")
 
-with torch.no_grad():
-    for i in tqdm(range(TEST_SIZE)):
-        target_class = torch.argmax(test_y[i]).to(DEVICE)
-        output = net(test_X[i].view(-1,1,IMG_SIZE, IMG_SIZE).to(DEVICE))[0]
-        predicted_class = torch.argmax(output)
+    start_time = round(float(time.time()), 3)
 
-        if predicted_class == target_class:
-            correct += 1
-        
-print("Complete!")
-print("Final accuracy:", round(correct/TEST_SIZE,3)*100, "%")
+    with open(f"{MODEL_NAME}.log", "a") as f:
+        for epoch in range(EPOCHS):
+            print(f"Epoch {epoch}:")
+            for i in tqdm(range(0, TRAIN_SIZE, BATCH_SIZE)):
+                batch_X = train_X[i:i+BATCH_SIZE].view(-1,1,IMG_SIZE,IMG_SIZE).to(DEVICE)
+                batch_y = train_y[i:i+BATCH_SIZE].to(DEVICE)
+
+                acc, loss = feedthrough(batch_X, batch_y, train=True)
+                
+                if i % 50 == 0:
+                    val_acc, val_loss = test(size=100)
+                    time_since_start = round(float(time.time()), 3) - start_time
+                    f.write(f"{time_since_start},{round(acc, 2)},{round(loss, 4)},{round(val_acc, 2)},{round(val_loss, 4)}\n")
+
+    print("Training complete!")
+
+train()
+
+
+
+headers = ["time", "train_acc", "train_loss", "val_acc", "val_loss"]
+df = pd.read_csv(f"{MODEL_NAME}.log",names=headers)
+
+smoothing = 15
+df['rolling_ta'] = df['train_acc'].rolling(smoothing).mean()
+df['rolling_tl'] = df['train_loss'].rolling(smoothing).mean()
+df['rolling_va'] = df['val_acc'].rolling(smoothing).mean()
+df['rolling_vl'] = df['val_loss'].rolling(smoothing).mean()
+
+t = df["time"]
+ta = df["rolling_ta"]
+tl = df["rolling_tl"]
+va = df["rolling_va"]
+vl = df["rolling_vl"]
+
+plt.plot(t, ta)
+plt.plot(t, tl)
+plt.plot(t, va)
+plt.plot(t, vl)
+plt.show()
 
 print("----------------------------------------")
